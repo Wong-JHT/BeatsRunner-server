@@ -139,6 +139,12 @@ BeatsRunner-server/
 
 ---
 
+## ❤️ Acknowledgements
+
+- **[GetSongBPM](https://getsongbpm.com)** - Open-source database for tempo and key data (CC BY 4.0)
+
+---
+
 ## 📄 License
 
 MIT License - See [LICENSE](LICENSE)
