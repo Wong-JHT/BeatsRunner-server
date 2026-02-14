@@ -120,8 +120,12 @@ class AuthService {
         val uuid = UUID.fromString(accountId)
         val profile = Profiles.select { Profiles.accountId eq uuid }.singleOrNull()
 
-        // Profile is considered complete if at least gender and birthday are set
-        profile != null && profile[Profiles.gender] != null && profile[Profiles.birthday] != null
+        // Profile is considered complete if required fields are set
+        profile != null && 
+            profile[Profiles.age] != null && 
+            profile[Profiles.weight] != null && 
+            profile[Profiles.height] != null && 
+            profile[Profiles.fitnessLevel] != null
     }
 
     /** Get user ID from JWT token. */

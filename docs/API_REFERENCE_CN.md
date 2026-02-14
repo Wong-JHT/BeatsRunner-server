@@ -43,7 +43,7 @@ data class WorkoutSession(
     val caloriesBurned: Double,   // 消耗卡路里
     val avgSpeed: Double,         // 平均速度
     val avgHeartRate: Int?,       // 平均心率
-    val musics: List<WorkoutMusic> // 运动中播放的音乐
+    val musics: List<WorkoutMusicData> // 运动中播放的音乐
 )
 ```
 
@@ -165,6 +165,8 @@ POST /workout/session
   "caloriesBurned": 350,
   "avgSpeed": 6.67,
   "maxSpeed": 9.5,
+  "avgHeartRate": 145,
+  "maxHeartRate": 170,
   "musics": [
     {
       "title": "Eye of the Tiger",
@@ -173,6 +175,20 @@ POST /workout/session
       "genre": "Rock",
       "playedAt": "2026-02-04T09:05:00Z",
       "durationSeconds": 246
+    }
+  ],
+  "points": [
+    {
+      "offsetSeconds": 0,
+      "speed": 6.0,
+      "incline": 1.0,
+      "heartRate": 130
+    },
+    {
+      "offsetSeconds": 1,
+      "speed": 6.1,
+      "incline": 1.0,
+      "heartRate": 131
     }
   ]
 }

@@ -7,6 +7,7 @@ import com.beatrunner.routes.authRoutes
 import com.beatrunner.routes.userRoutes
 import com.beatrunner.routes.webSocketRoutes
 import com.beatrunner.routes.workoutRoutes
+import com.beatrunner.plugins.configureLogging
 import io.github.cdimascio.dotenv.dotenv
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
@@ -35,6 +36,8 @@ fun main() {
 fun Application.module() {
     // Initialize database
     DatabaseFactory.init()
+
+    configureLogging()
 
     // Install plugins
     install(ContentNegotiation) { json() }

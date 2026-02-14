@@ -16,22 +16,34 @@ import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.jetbrains.exposed.sql.transactions.transaction
 
+import com.beatrunner.database.tables.WorkoutDataPoints
+
 /** Database factory for managing PostgreSQL connections with HikariCP pooling. */
 object DatabaseFactory {
     private val dotenv = dotenv { ignoreIfMissing = true }
 
+    private val logger = org.slf4j.LoggerFactory.getLogger(DatabaseFactory::class.java)
+
     fun init() {
+        logger.info("Initializing database connection...")
         val database = Database.connect(createHikariDataSource())
 
         transaction(database) {
-            SchemaUtils.create(Accounts)
-            SchemaUtils.create(Identities)
-            SchemaUtils.create(Profiles)
-            SchemaUtils.create(Settings)
-            SchemaUtils.create(UserDevices)
-            SchemaUtils.create(WorkoutSessions)
-            SchemaUtils.create(WorkoutMusics)
+            SchemaUtils.create(
+                    Accounts,
+                    Identities,
+                    Profiles,
+                    Settings,
+                    UserDevices,
+                    WorkoutSessions,
+                    WorkoutMusics,
+                    WorkoutDataPoints,
+                    com.beatrunner.database.tables.Songs
+            )
+            // Migration: Add tags column if not exists
+            exec("ALTER TABLE songs ADD COLUMN IF NOT EXISTS tags TEXT") { }
         }
+        logger.info("Database initialized successfully.")
     }
 
     private fun createHikariDataSource(): HikariDataSource {

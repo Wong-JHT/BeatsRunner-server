@@ -1,7 +1,7 @@
 package com.beatrunner.database.tables
 
 import org.jetbrains.exposed.sql.Table
-import org.jetbrains.exposed.sql.kotlin.datetime.datetime
+import org.jetbrains.exposed.sql.kotlin.datetime.timestamp
 
 /** WorkoutMusics table schema. Stores music played during workout sessions. */
 object WorkoutMusics : Table("workout_musics") {
@@ -11,7 +11,7 @@ object WorkoutMusics : Table("workout_musics") {
     val artist = varchar("artist", 255)
     val bpm = integer("bpm")
     val genre = varchar("genre", 100)
-    val playedAt = datetime("played_at")
+    val playedAt = timestamp("played_at")
     val durationSeconds = integer("duration_seconds")
 
     override val primaryKey = PrimaryKey(id)

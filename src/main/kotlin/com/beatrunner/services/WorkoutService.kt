@@ -2,6 +2,7 @@ package com.beatrunner.services
 
 import com.beatrunner.common.models.*
 import com.beatrunner.database.DatabaseFactory.dbQuery
+import com.beatrunner.database.tables.WorkoutDataPoints
 import com.beatrunner.database.tables.WorkoutMusics
 import com.beatrunner.database.tables.WorkoutSessions
 import java.util.UUID
@@ -14,15 +15,15 @@ class WorkoutService {
     /** Create a new workout session with music records. */
     suspend fun createWorkoutSession(
             userId: String,
-            request: CreateWorkoutRequest
-    ): WorkoutSession? = dbQuery {
+            request: WorkoutSessionRequest
+    ): WorkoutSessionDetail? = dbQuery {
         val userUuid = UUID.fromString(userId)
         val sessionId = UUID.randomUUID()
-        val now = Clock.System.now().toLocalDateTime(TimeZone.UTC)
+        val now = Clock.System.now()
 
-        // Parse datetime strings
-        val startTime = LocalDateTime.parse(request.startTime)
-        val endTime = LocalDateTime.parse(request.endTime)
+        // Parse datetime strings with timezone support
+        val startTime = Instant.parse(request.startTime)
+        val endTime = Instant.parse(request.endTime)
 
         // Insert workout session
         WorkoutSessions.insert {
@@ -35,6 +36,7 @@ class WorkoutService {
             it[caloriesBurned] = request.caloriesBurned
             it[avgSpeed] = request.avgSpeed
             it[maxSpeed] = request.maxSpeed
+            it[avgIncline] = request.avgIncline
             it[avgHeartRate] = request.avgHeartRate
             it[maxHeartRate] = request.maxHeartRate
             it[createdAt] = now
@@ -43,7 +45,7 @@ class WorkoutService {
         // Insert music records
         val musics =
                 request.musics.map { music ->
-                    val playedAt = LocalDateTime.parse(music.playedAt)
+                    val playedAt = Instant.parse(music.playedAt)
                     WorkoutMusics.insert {
                         it[workoutSessionId] = sessionId
                         it[title] = music.title
@@ -54,17 +56,21 @@ class WorkoutService {
                         it[durationSeconds] = music.durationSeconds
                     }
 
-                    WorkoutMusic(
-                            title = music.title,
-                            artist = music.artist,
-                            bpm = music.bpm,
-                            genre = music.genre,
-                            playedAt = music.playedAt,
-                            durationSeconds = music.durationSeconds
-                    )
+                    music // already in WorkoutMusicData format
                 }
 
-        WorkoutSession(
+        // Insert data points
+        request.points.forEach { point ->
+            WorkoutDataPoints.insert {
+                it[workoutSessionId] = sessionId
+                it[offsetSeconds] = point.offsetSeconds
+                it[speed] = point.speed
+                it[incline] = point.incline
+                it[heartRate] = point.heartRate
+            }
+        }
+
+        WorkoutSessionDetail(
                 id = sessionId.toString(),
                 startTime = request.startTime,
                 endTime = request.endTime,
@@ -73,9 +79,11 @@ class WorkoutService {
                 caloriesBurned = request.caloriesBurned,
                 avgSpeed = request.avgSpeed,
                 maxSpeed = request.maxSpeed,
+                avgIncline = request.avgIncline,
                 avgHeartRate = request.avgHeartRate,
                 maxHeartRate = request.maxHeartRate,
-                musics = musics
+                musics = musics,
+                points = request.points
         )
     }
 
@@ -84,7 +92,7 @@ class WorkoutService {
             userId: String,
             page: Int,
             pageSize: Int
-    ): PagedResponse<WorkoutSession> = dbQuery {
+    ): WorkoutSessionsResponse = dbQuery {
         val userUuid = UUID.fromString(userId)
         val offset = (page - 1) * pageSize
 
@@ -106,7 +114,7 @@ class WorkoutService {
                                     }
                                             .orderBy(WorkoutMusics.playedAt to SortOrder.ASC)
                                             .map { musicRow ->
-                                                WorkoutMusic(
+                                                WorkoutMusicData(
                                                         title = musicRow[WorkoutMusics.title],
                                                         artist = musicRow[WorkoutMusics.artist],
                                                         bpm = musicRow[WorkoutMusics.bpm],
@@ -121,7 +129,7 @@ class WorkoutService {
                                                 )
                                             }
 
-                            WorkoutSession(
+                            WorkoutSessionDetail(
                                     id = sessionId.toString(),
                                     startTime = row[WorkoutSessions.startTime].toString(),
                                     endTime = row[WorkoutSessions.endTime].toString(),
@@ -130,25 +138,27 @@ class WorkoutService {
                                     caloriesBurned = row[WorkoutSessions.caloriesBurned],
                                     avgSpeed = row[WorkoutSessions.avgSpeed],
                                     maxSpeed = row[WorkoutSessions.maxSpeed],
+                                    avgIncline = row[WorkoutSessions.avgIncline],
                                     avgHeartRate = row[WorkoutSessions.avgHeartRate],
                                     maxHeartRate = row[WorkoutSessions.maxHeartRate],
-                                    musics = musics
+                                    musics = musics,
+                                    points = emptyList() // Don't return points in list view
                             )
                         }
 
         val totalPages = ((totalCount + pageSize - 1) / pageSize).toInt()
 
-        PagedResponse(
+        WorkoutSessionsResponse(
                 data = sessions,
                 page = page,
                 pageSize = pageSize,
-                totalCount = totalCount,
+                totalCount = totalCount.toInt(),
                 totalPages = totalPages
         )
     }
 
     /** Get a single workout session by ID. */
-    suspend fun getWorkoutSession(userId: String, sessionId: String): WorkoutSession? = dbQuery {
+    suspend fun getWorkoutSession(userId: String, sessionId: String): WorkoutSessionDetail? = dbQuery {
         val userUuid = UUID.fromString(userId)
         val sessionUuid = UUID.fromString(sessionId)
 
@@ -162,7 +172,7 @@ class WorkoutService {
                             WorkoutMusics.select { WorkoutMusics.workoutSessionId eq sessionUuid }
                                     .orderBy(WorkoutMusics.playedAt to SortOrder.ASC)
                                     .map { musicRow ->
-                                        WorkoutMusic(
+                                        WorkoutMusicData(
                                                 title = musicRow[WorkoutMusics.title],
                                                 artist = musicRow[WorkoutMusics.artist],
                                                 bpm = musicRow[WorkoutMusics.bpm],
@@ -174,7 +184,20 @@ class WorkoutService {
                                         )
                                     }
 
-                    WorkoutSession(
+                    // Get data points for this session
+                    val points = WorkoutDataPoints.select {
+                        WorkoutDataPoints.workoutSessionId eq sessionUuid
+                    }.orderBy(WorkoutDataPoints.offsetSeconds to SortOrder.ASC)
+                    .map { pointRow ->
+                        WorkoutDataPoint(
+                            offsetSeconds = pointRow[WorkoutDataPoints.offsetSeconds],
+                            speed = pointRow[WorkoutDataPoints.speed],
+                            incline = pointRow[WorkoutDataPoints.incline],
+                            heartRate = pointRow[WorkoutDataPoints.heartRate]
+                        )
+                    }
+
+                    WorkoutSessionDetail(
                             id = row[WorkoutSessions.id].toString(),
                             startTime = row[WorkoutSessions.startTime].toString(),
                             endTime = row[WorkoutSessions.endTime].toString(),
@@ -183,9 +206,11 @@ class WorkoutService {
                             caloriesBurned = row[WorkoutSessions.caloriesBurned],
                             avgSpeed = row[WorkoutSessions.avgSpeed],
                             maxSpeed = row[WorkoutSessions.maxSpeed],
+                            avgIncline = row[WorkoutSessions.avgIncline],
                             avgHeartRate = row[WorkoutSessions.avgHeartRate],
                             maxHeartRate = row[WorkoutSessions.maxHeartRate],
-                            musics = musics
+                            musics = musics,
+                            points = points
                     )
                 }
     }

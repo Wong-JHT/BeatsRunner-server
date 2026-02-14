@@ -1,6 +1,6 @@
 package com.beatrunner.routes
 
-import com.beatrunner.common.models.CreateWorkoutRequest
+import com.beatrunner.common.models.WorkoutSessionRequest
 import com.beatrunner.services.WorkoutService
 import io.ktor.http.*
 import io.ktor.server.application.*
@@ -27,7 +27,7 @@ fun Route.workoutRoutes() {
                 }
 
                 try {
-                    val request = call.receive<CreateWorkoutRequest>()
+                    val request = call.receive<WorkoutSessionRequest>()
                     val session = workoutService.createWorkoutSession(userId, request)
 
                     if (session != null) {

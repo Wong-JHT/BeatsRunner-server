@@ -28,7 +28,7 @@ object JwtConfig {
             .withAudience(audience)
             .withIssuer(issuer)
             .withClaim("userId", userId)
-            .withExpiresAt(Date(System.currentTimeMillis() + 86400000)) // 24 hours
+            .withExpiresAt(Date(System.currentTimeMillis() + 86400000L * 30)) // 30 days
             .sign(algorithm)
     }
 

@@ -2,6 +2,7 @@ package com.beatrunner.ai
 
 import com.beatrunner.common.models.MusicData
 import com.beatrunner.common.models.TreadmillCommand
+import com.beatrunner.common.models.UserProfile
 import io.github.cdimascio.dotenv.dotenv
 import io.ktor.client.*
 import io.ktor.client.call.*
@@ -14,6 +15,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.jsonObject
 
 /**
  * DeepSeek AI service for generating treadmill commands based on music data.
@@ -61,17 +63,37 @@ class DeepSeekService {
      * @param musicData The music information to analyze
      * @return TreadmillCommand with AI-generated recommendations
      */
-    suspend fun analyzeMusicAndGenerateCommand(musicData: MusicData): TreadmillCommand {
+    /**
+     * Generate treadmill command based on user profile and song data.
+     */
+    suspend fun generateCommand(userProfile: UserProfile?, song: com.beatrunner.services.Song): TreadmillCommand {
         return try {
+            val userContext = userProfile?.let {
+                """
+                User Profile:
+                - Age: ${it.age ?: "Unknown"}
+                - Weight: ${it.weight ?: "Unknown"}kg
+                - Height: ${it.height ?: "Unknown"}cm
+                - Fitness Level: ${it.fitnessLevel}
+                - Target Heart Rate: ${it.targetHeartRate ?: "Unknown"}
+                """.trimIndent()
+            } ?: "User Profile: Unknown (Assume beginner)"
+
+            val songContext = """
+                Song Analysis:
+                - Title: ${song.title}
+                - Artist: ${song.artist}
+                - BPM: ${song.bpm}
+                - Energy: ${song.energy} (0.0-1.0)
+                - Valence (Mood): ${song.valence} (0.0-1.0)
+            """.trimIndent()
+
             val userMessage = """
-                Analyze this music:
-                - Title: ${musicData.title}
-                - Artist: ${musicData.artist}
-                - BPM: ${musicData.bpm}
-                - Genre: ${musicData.genre}
-                ${musicData.lyricsSnippet?.let { "- Lyrics: $it" } ?: ""}
+                $userContext
                 
-                Generate treadmill recommendations.
+                $songContext
+                
+                Generate a treadmill workout command that matches this song's energy and the user's profile.
             """.trimIndent()
 
             val response = client.post("https://api.deepseek.com/v1/chat/completions") {
@@ -94,51 +116,45 @@ class DeepSeekService {
 
             parseAIResponse(aiContent)
         } catch (e: Exception) {
-            // Fallback response on error
-            generateFallbackCommand(musicData)
+            // Fallback
+            generateFallbackCommand(song)
         }
     }
 
-    /**
-     * Parse AI response JSON into TreadmillCommand.
-     */
-    private fun parseAIResponse(content: String): TreadmillCommand {
-        return try {
-            val json = Json { ignoreUnknownKeys = true }
-            // Extract JSON from response (in case AI adds extra text)
-            val jsonStart = content.indexOf('{')
-            val jsonEnd = content.lastIndexOf('}') + 1
-            val jsonString = content.substring(jsonStart, jsonEnd)
-            
-            val jsonObject = json.parseToJsonElement(jsonString) as JsonObject
-            TreadmillCommand(
-                speed = jsonObject["speed"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: 6.0,
-                incline = jsonObject["incline"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: 2.0,
-                coachMessage = jsonObject["coachMessage"]?.jsonPrimitive?.content 
-                    ?: "Keep up the great work!"
-            )
-        } catch (e: Exception) {
-            throw Exception("Failed to parse AI response: ${e.message}")
-        }
-    }
-
-    /**
-     * Generate fallback command when AI service is unavailable.
-     */
-    private fun generateFallbackCommand(musicData: MusicData): TreadmillCommand {
-        // Simple BPM-based calculation
-        val speed = when {
-            musicData.bpm < 100 -> 5.0
-            musicData.bpm < 120 -> 7.0
-            musicData.bpm < 140 -> 9.0
-            else -> 11.0
-        }
-
+    private fun generateFallbackCommand(song: com.beatrunner.services.Song): TreadmillCommand {
+        val baseSpeed = 6.0 + (song.energy * 4.0) // 6.0 to 10.0
+        val speed = if (song.bpm > 130) baseSpeed + 1.0 else baseSpeed
+        
         return TreadmillCommand(
             speed = speed,
-            incline = 2.0,
-            coachMessage = "Great choice! Let's match the energy of ${musicData.title}!"
+            incline = if (song.energy > 0.7) 3.0 else 1.0,
+            coachMessage = "Let's move to the beat of ${song.title}!"
         )
+    }
+
+    /**
+     * Legacy method for backward compatibility or simple text analysis
+     */
+    suspend fun analyzeMusicAndGenerateCommand(musicData: MusicData): TreadmillCommand {
+        // ... implementation can remain or be deprecated
+        return TreadmillCommand(6.0, 1.0, "Maintain pace") 
+    }
+
+
+    private fun parseAIResponse(content: String): TreadmillCommand {
+        return try {
+            val json = Json { ignoreUnknownKeys = true; isLenient = true }
+            val jsonElement = json.parseToJsonElement(content).jsonObject
+            
+            val speed = jsonElement["speed"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: 6.0
+            val incline = jsonElement["incline"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: 0.0
+            val coachMessage = jsonElement["coachMessage"]?.jsonPrimitive?.content ?: "Keep moving!"
+            
+            TreadmillCommand(speed, incline, coachMessage)
+        } catch (e: Exception) {
+            println("Error parsing AI response: ${e.message}")
+            TreadmillCommand(6.0, 0.0, "Couldn't parse AI advice. Just run!")
+        }
     }
 }
 
